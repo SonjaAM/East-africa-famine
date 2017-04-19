@@ -3,20 +3,40 @@
 
 //-------------------------------------------- VARIABLES -------------------------------------------------
 
-//colours for active and inactive countries
+//if the order of columns is changed in the spreadsheet, just change the numbers here
+//e.g. if ISO3 has now been switched with Helped, then replace 1 with 7, and 7 with 1, leaving the comments
+var orderOfVariables = [0, //Country, 
+                        1, //ISO3, 
+                        2, //In need,
+                        3, //malnourished, 
+                        4, //children malnourished 
+                        5, //need safe drinking water
+                        6, //idp
+                        7, //helped
+                        8, //food provided
+                        9, //cash transferred
+                        10, //safe drinking water
+                        11, // centre map Longitude
+                        12 //centre map latitude
+];
+
+
 var colorNotActive = 'rgba(189, 182, 176, 0.8)'//'rgba(153, 0, 0, 0.7)';
 var colorActive = 'rgba(238, 42, 36, 1)';//'rgba(204, 0, 0, 1)';
-var listOfISO3 = ['SSD', 'SOM', 'NGA', 'YEM', 'KEN', 'ETH'];
-var listCountryNames = ['South Sudan', 'Somalia', 'Nigeria', 'Yemen', 'Kenya', 'Ethiopia'];
-
-// the following variables need to be in the same order as the country list above
-var inNeed = [7.5, 6.2, 8.5, 18.8, 2.7, 9.7];
-var foodNeed = [4.9, 2.9, 8.1, 14.1, 2.2, 0];       //ETH number not known yet
-var peopleHelped = [390, 1100, 0, 0, 0, 0];
-var foodHelped = [950, 380, 0, 210, 15, 0];
-var cashTransferred = [0, 100, 160, 48, 4, 0];  //ETH and SSD not known
-var idp = [1.8, 1.1, 1.9, 2.0, 0, 0 ];              //ETH not known - IDP = internally displaced people
+var listOfISO3 = [];
+var listCountryNames = [];
+var description = [];
+var inNeed = [];
+var foodNeed = [];
+var childFoodNeed = [];
+var waterNeed = [];
+var idp = [];
+var peopleHelped = [];
+var foodHelped = [];
+var cashTransferred = [];
+var waterSafe = [];
 var pitch = [45, 15, 35, 5, 50, 20];
+
 
 //text on the map
 var needText = '</div><div class="number-text"> million people in need</div>';
@@ -28,13 +48,7 @@ var cashTransfer = '</div><div> thousand people have been transferred cash</div>
 var countDiv = '<div class=\'count\'> ';
 
 // get viewport width and transform numbers
-var center = [
-    [30.585937, 14.562947],     //SSD
-    [45.042969, 11.045813],    //SOM
-    [9.843750, 14.978733],      //NGA
-    [47.636719, 20.509905],   //YEM
-    [39.023438, 9.449062],    //KEN
-    [40.078125, 14.895893]];  //ETH
+var center = [];
 
 var activeChapterName = 'ETH';
 var activeRedCrossWork = 'ETH';
@@ -60,13 +74,55 @@ var layerName = 'admin0-4r2su7';
 
 //call to google sheet
 //googleSheet Link
-var gLink = "https://proxy.hxlstandard.org/data?url=https%3A//docs.google.com/spreadsheets/d/13dT082rHZEm7-HT8YBVypsi7rGGaQooKJCyJ_1HTfys/edit%23gid%3D454209612";
+var gLink = "https://proxy.hxlstandard.org/data.json?force=on&url=https%3A//docs.google.com/spreadsheets/d/13dT082rHZEm7-HT8YBVypsi7rGGaQooKJCyJ_1HTfys/edit%23gid%3D454209612&force=on";
 
 var sheetCall = $.ajax({
     type: 'GET',
     url: gLink,
     dataType: 'json',
 });
+
+$.when(sheetCall).then(function (dataArgs) {
+    var index = 0;
+    function checkZeros(number) {
+        if (isNaN(parseFloat(number))) {
+            return 0;
+        } else {
+            return parseFloat(number);
+        }
+    };
+    try {
+        dataArgs.forEach(function (c, i) {
+            if (i === 0) {
+                description = c;
+            }
+            else if (i === 1) { }
+            else {
+                listCountryNames[index] = c[orderOfVariables[0]].trim();
+                listOfISO3[index] = c[orderOfVariables[1]].trim();
+                inNeed[index] = checkZeros(c[orderOfVariables[2]]);
+                foodNeed[index] = checkZeros(c[orderOfVariables[3]]);
+                childFoodNeed[index] = checkZeros(c[orderOfVariables[4]]);
+                waterNeed[index] = checkZeros(c[orderOfVariables[5]]);
+                idp[index] = checkZeros(c[orderOfVariables[6]]);
+                peopleHelped[index] = checkZeros(c[orderOfVariables[7]]);
+                foodHelped[index] = checkZeros(c[orderOfVariables[8]]);
+                cashTransferred[index] = checkZeros(c[orderOfVariables[9]]);
+                waterSafe[index] = checkZeros(c[orderOfVariables[10]]);
+                center[index] = [];
+                center[index][0] = checkZeros(c[orderOfVariables[11]].trim());
+                center[index][1] = checkZeros(c[orderOfVariables[12]].trim());
+
+                index++;
+            }
+        }); //End data args for each
+    } catch (e) { console.log("Please check the spreadsheet with the data.");}
+
+    createObjects();
+    setMapbox();
+
+})
+
 
 //---------------------------------------- OBJECT DEFINITIONS -------------------------------------------
 
@@ -110,34 +166,36 @@ var CameraObject = {
     }
 };
 
+var countryBorders = Object.create(LayerObject);
+var countryNameHighlight = Object.create(LayerObject);
+
 //------------------------------------------ CREATING OBJECTS -------------------------------------------
 
+function createObjects() {
+    //adding other countries to the locations list 
 
-//adding other countries to the locations list 
+    for (var i = 0; i < listOfISO3.length; i++) {
+        var tempCamera = Object.create(CameraObject);
+        var temp = Object.create(CountryObject);
+        tempCamera.init(4000, center[i], 3.5, pitch[i]);
+        temp.init(tempCamera, inNeed[i], foodNeed[i], idp[i], peopleHelped[i], foodHelped[i], cashTransferred[i]);
+        mapLocations[listOfISO3[i]] = temp;
+    }
 
-for (var i = 0; i < listOfISO3.length; i++) {
-    var tempCamera = Object.create(CameraObject);
-    var temp = Object.create(CountryObject);
-    tempCamera.init(4000, center[i], 3.5, pitch[i]);
-    temp.init(tempCamera, inNeed[i], foodNeed[i], idp[i], peopleHelped[i], foodHelped[i], cashTransferred[i]);
-    mapLocations[listOfISO3[i]] = temp;
+
+    //creating the layers for borders and name highlighting
+
+    countryBorders.init('countryLine', 'line', 'countries', { 'visibility': 'visible' }, { 'line-color': '#fff', 'line-width': 1 }, layerName, ['in', 'iso_a3']);
+
+    countryNameHighlight.init('countryNames', 'symbol', 'countryNames', { 'visibility': 'visible', 'text-field': '{name_en}', 'text-size': 14 }, { 'text-color': '#3a3a3a' },//, 'text-halo-color': '#fff', 'text-halo-width': 1, 'text-halo-blur': 1  },
+        'country_label', ['in', 'name_en', '']);
+
+    //adding list of countries to parameters of the layer objects
+
+    countryBorders.filter.push.apply(countryBorders.filter, listOfISO3);
+    countryNameHighlight.filter.push.apply(countryNameHighlight.filter, listCountryNames);
+
 }
-
-
-//creating the layers for borders and name highlighting
-
-var countryBorders = Object.create(LayerObject);
-countryBorders.init('countryLine', 'line', 'countries', { 'visibility': 'visible' }, {'line-color': '#fff','line-width': 1}, layerName, ['in', 'iso_a3']);
-
-var countryNameHighlight = Object.create(LayerObject);
-countryNameHighlight.init('countryNames', 'symbol', 'countryNames', { 'visibility': 'visible', 'text-field': '{name_en}', 'text-size': 14 }, { 'text-color': '#3a3a3a'},//, 'text-halo-color': '#fff', 'text-halo-width': 1, 'text-halo-blur': 1  },
-    'country_label', ['in', 'name_en', '']);
-
-//adding list of countries to parameters of the layer objects
-
-countryBorders.filter.push.apply(countryBorders.filter, listOfISO3);
-countryNameHighlight.filter.push.apply(countryNameHighlight.filter, listCountryNames);
-
 
 //----------------------------------- FUNCTIONS ------------------------------------------------------
 
@@ -160,17 +218,17 @@ function isRedCrossWorkOnScreen(id) {
 }
 
 function countUp(decimals) {
-    $('.count').each(function () {
-        $(this).prop('Counter', 0).animate({
-            Counter: $(this).text()
-        }, {
-            duration: 1500,
-            easing: 'swing',
-            step: function (now) {
-                $(this).text(parseFloat((Math.ceil(now * decimals) / decimals).toFixed(1)));
-            }
-        });
-    });
+    //$('.count').each(function () {
+    //    $(this).prop('Counter', 0).animate({
+    //        Counter: $(this).text()
+    //    }, {
+    //        duration: 1500,
+    //        easing: 'swing',
+    //        step: function (now) {
+    //            $(this).text(parseFloat((Math.ceil(now * decimals) / decimals).toFixed(1)));
+    //        }
+    //    });
+    //});
 }
 
 
@@ -183,41 +241,47 @@ takes the following parameters:
         if the number of people affected are 91.9 million, 
         a value of countDecimal = 10 will count up from 0.1 to 91.9 fo instance
         whereas a value of 1 will count up from 1 to 91*/
-
+function changeAndAnimateNumbers(id, html) {
+    //$(id).animate({ "opacity": 0 }, 1000, "linear", function(){
+    //    var tm1 = setTimeout(function () {
+    $(id).html(html);
+    $(id).addClass("fadeIn");
+            //$(id).css("display", "flex");
+    //    }, 1000);
+    //    var tm2 = setTimeout(function () {
+    //        $(id).animate({ "opacity": 1 }, 1000)
+    //    }, 1500);
+    //})
+}
 function setNumberCountUp(chapterName, html1, var1, foodHtml, var2, idpHtml, var3, countDecimal) {
-    $('.number-container').fadeOut(1000, function () {
-        setTimeout(function () {
-
+    //$('#in-need').stop();
+    //$('#in-need').css("opacity", 0);
             // if the number of people in need is not null then add the numbers to the map
-            if (mapLocations[chapterName][var1] > 0) {
-                $('#in-need').css("visibility", "visible");
-                $('#in-need').html(html1).fadeIn(1000, function () {
-                });
-            }
-            if (mapLocations[chapterName][var2] > 0) {
-                $('#food-need').css("visibility", "visible");
-                $('#food-need').html(foodHtml).fadeIn(1000, function () {
-                });
-            }
-            if (mapLocations[chapterName][var3] > 0) {
-                $('#i-d-p').css("visibility", "visible");
-                $('#i-d-p').html(idpHtml).fadeIn(1000, function () {
-                });
-            }
-            if (mapLocations[chapterName][var1] === 0) {
-                $('#in-need').css("visibility", "hidden");
-            }
-            if (mapLocations[chapterName][var2] === 0) {
-                $('#food-need').css("visibility", "hidden");
-            }
-            if (mapLocations[chapterName][var3] === 0) {
-                $('#i-d-p').css("visibility", "hidden");
-            }
-            // function to animate the numbers to count up 10 means 1 decimal place
+    if (mapLocations[chapterName][var1] > 0) {
+        changeAndAnimateNumbers('#in-need', html1);
+    };
+    if (mapLocations[chapterName][var2] > 0) {
+        changeAndAnimateNumbers('#number1', foodHtml);
+    }
+    if (mapLocations[chapterName][var3] > 0) {
+        changeAndAnimateNumbers('#number2', idpHtml);
+    }
+    if (mapLocations[chapterName][var1] === 0) {
 
-                countUp(countDecimal);  
-        }, 500);
-    }); // end fadedout of number container
+        $('#in-need').removeClass("fadeIn");
+    }
+    if (mapLocations[chapterName][var2] === 0) {
+
+        $('#number1').removeClass("fadeIn");
+    }
+    if (mapLocations[chapterName][var3] === 0) {
+
+        $('#number2').removeClass("fadeIn");
+    }
+    //// function to animate the numbers to count up 10 means 1 decimal place
+
+    countUp(countDecimal);
+
 } //end setNumberCountUp
 
 
@@ -248,7 +312,7 @@ function setActiveChapter(chapterName) {
     var needHtml = countDiv + mapLocations[chapterName].inNeed + needText;
     var foodHtml = countDiv + mapLocations[chapterName].foodNeed + foodText;
     var idpHtml = countDiv + mapLocations[chapterName].idp + idpText;
-    
+
     setNumberCountUp(chapterName, needHtml, 'inNeed', foodHtml, 'foodNeed', idpHtml, 'idp', 10);
 
     oldChapter = chapterName;
@@ -263,7 +327,7 @@ the function takes the country chapter name/id as a parameter. e.g.: "SSD" for S
 //------------------------------------ SETTING UP MAPBOX ----------------------------------------------
 
 
-// Setting up the background map (grey basic map labelled east-africa-famine2 on mapbox)
+//------------- Setting up the background map (grey basic map labelled east-africa-famine2 on mapbox)
 
 mapboxgl.accessToken = 'pk.eyJ1IjoiYnJjbWFwcyIsImEiOiJRZklIbXY0In0.SeDBAb72saeEJhTVDrVusg';
 var map = new mapboxgl.Map({
@@ -276,63 +340,66 @@ var map = new mapboxgl.Map({
 
 // ------------------------------ When the map loads add all the layers --------------------------------
 
-map.on('load', function () {
+function setMapbox() {
 
-    //Adding Map Sources: 
-    //adding the natural earth boundaries
+    map.on('load', function () {
 
-    map.addSource('countries', {
-        type: 'vector',
-        url: 'mapbox://brcmaps.4a5g1ou7'
-    });
+        //Adding Map Sources: 
+        //adding the natural earth boundaries
 
-    //adding the country names from mapbox street default
-    map.addSource('countryNames', {
-        type: 'vector',
-        url: 'mapbox://mapbox.mapbox-streets-v7'
-    });
+        map.addSource('countries', {
+            type: 'vector',
+            url: 'mapbox://brcmaps.4a5g1ou7'
+        });
 
-    // creating and adding a layer of fill per country for targeted countries using the layer object
+        //adding the country names from mapbox street default
+        map.addSource('countryNames', {
+            type: 'vector',
+            url: 'mapbox://mapbox.mapbox-streets-v7'
+        });
 
-    for (var i = 0; i < listOfISO3.length; i++) {
-        var temp = Object.create(LayerObject);
-        temp.init(listOfISO3[i], 'fill', 'countries', { 'visibility': 'visible' }, { 'fill-color': colorNotActive }, layerName, ['in', 'iso_a3', listOfISO3[i]]);
-        map.addLayer(temp);
-    }
+        // creating and adding a layer of fill per country for targeted countries using the layer object
 
-    //adding Lines around the country to make it prettier
+        for (var i = 0; i < listOfISO3.length; i++) {
+            var temp = Object.create(LayerObject);
+            temp.init(listOfISO3[i], 'fill', 'countries', { 'visibility': 'visible' }, { 'fill-color': colorNotActive }, layerName, ['in', 'iso_a3', listOfISO3[i]]);
+            map.addLayer(temp);
+        }
 
-    map.addLayer(countryBorders);
+        //adding Lines around the country to make it prettier
 
-    // highlighting country names
+        map.addLayer(countryBorders);
 
-    map.addLayer(countryNameHighlight);
-    map.scrollZoom.disable();
+        // highlighting country names
 
-    // Figuring out what chapter is on the screen
+        map.addLayer(countryNameHighlight);
+        map.scrollZoom.disable();
 
-    window.onscroll = function () {
-        var chapterNames = Object.keys(mapLocations);
-        for (var i = 0; i < chapterNames.length; i++) {
-            var chapterName = chapterNames[i];
-            if (isElementOnScreen(chapterName)) {
-                setActiveChapter(chapterName);
-                if (isRedCrossWorkOnScreen(chapterName)) {
-                    if (activeRedCrossWork === chapterName) { break; }  // setting this so that the numbers don't go in a loop while we stay on the section
-                    // fade out previous number and then fade in new number of in number of people in Need
-                    var rc_var1 = "peopleHelped";
-                    var rc_var2 = "foodHelped";
-                    var rc_var3 = "cashTransferred";
-                    var rc_work_line1 = countDiv + mapLocations[chapterName][rc_var1] + helpedHtml;
-                    var rc_work_line2 = countDiv + mapLocations[chapterName][rc_var2]+ foodHtml;
-                    var rc_work_line3 = countDiv + mapLocations[chapterName][rc_var3] + cashTransfer;
-                    setNumberCountUp(chapterName, rc_work_line1, rc_var1, rc_work_line2, rc_var2, rc_work_line3, rc_var3, 1);
-                    activeRedCrossWork = chapterName;
+        // Figuring out what chapter is on the screen
+
+        window.onscroll = function () {
+            var chapterNames = Object.keys(mapLocations);
+            for (var i = 0; i < chapterNames.length; i++) {
+                var chapterName = chapterNames[i];
+                if (isElementOnScreen(chapterName)) {
+                    setActiveChapter(chapterName);
+                    if (isRedCrossWorkOnScreen(chapterName)) {
+                        if (activeRedCrossWork === chapterName) { break; }  // setting this so that the numbers don't go in a loop while we stay on the section
+                        // fade out previous number and then fade in new number of in number of people in Need
+                        var rc_var1 = "peopleHelped";
+                        var rc_var2 = "foodHelped";
+                        var rc_var3 = "cashTransferred";
+                        var rc_work_line1 = countDiv + mapLocations[chapterName][rc_var1] + helpedHtml;
+                        var rc_work_line2 = countDiv + mapLocations[chapterName][rc_var2] + foodHtml;
+                        var rc_work_line3 = countDiv + mapLocations[chapterName][rc_var3] + cashTransfer;
+                        setNumberCountUp(chapterName, rc_work_line1, rc_var1, rc_work_line2, rc_var2, rc_work_line3, rc_var3, 1);
+                        activeRedCrossWork = chapterName;
+                        break;
+                    }
                     break;
                 }
-                break;
             }
-        }
-    };
+        };
+    }); // END function on map load
 
-}); // END function on map load
+}
